@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+geopy
+timezonefinder
+astral

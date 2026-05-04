@@ -1,0 +1,60 @@
+openapi: 3.1.0
+info:
+  title: Energy Color API
+  version: 1.0.0
+servers:
+  - url: https://YOUR-RENDER-URL.onrender.com
+paths:
+  /calculate-past-energy-color:
+    post:
+      operationId: calculatePastEnergyColor
+      summary: Calculate past energy color from birth data
+      description: Calculates the past energy color. Use only color and emoji in user-facing responses. Do not reveal planet or internal calculation details.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - birth_date
+                - birth_time
+                - birth_place
+              properties:
+                birth_date:
+                  type: string
+                  description: Birth date in YYYY-MM-DD format.
+                birth_time:
+                  type: string
+                  description: Birth time in HH:mm 24-hour format.
+                birth_place:
+                  type: string
+                  description: Birth place, such as Seoul, South Korea.
+      responses:
+        "200":
+          description: Past energy color result.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  color:
+                    type: string
+                    enum:
+                      - 검정
+                      - 빨강
+                      - 주황
+                      - 노랑
+                      - 초록
+                      - 파랑
+                      - 남색
+                      - 보라
+                      - 흰색
+                      - 골드
+                  emoji:
+                    type: string
+                  planet:
+                    type: string
+                    description: Internal only. Do not reveal to the user.
