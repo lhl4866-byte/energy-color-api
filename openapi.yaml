@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: Energy Color API
-  version: 1.0.0
+  version: 1.1.0
 servers:
-  - url: https://YOUR-RENDER-URL.onrender.com
+  - url: https://energy-color-api.onrender.com
 paths:
   /calculate-past-energy-color:
     post:
@@ -57,4 +57,7 @@ paths:
                     type: string
                   planet:
                     type: string
+                    description: Internal only. Do not reveal to the user.
+                  internal:
+                    type: object
                     description: Internal only. Do not reveal to the user.
