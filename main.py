@@ -9,16 +9,18 @@ from datetime import datetime, timedelta
 
 app = FastAPI(
     title="Energy Color API",
-    version="1.0.0",
+    version="1.1.0",
     description="Calculates past energy color using a custom 10-planet expanded planetary-hour system."
 )
 
+# Custom 10-planet order. Do not expose this to GPT users.
 PLANET_ORDER = [
     "Pluto", "Mars", "Venus", "Sun", "Jupiter",
     "Mercury", "Moon", "Uranus", "Neptune", "Saturn"
 ]
 
-# Python weekday: Monday=0, Tuesday=1, ... Sunday=6
+# Python weekday: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6
+# Start planet for the first daytime segment of each weekday.
 WEEKDAY_START = {
     6: "Sun",
     0: "Moon",
@@ -48,6 +50,13 @@ class BirthRequest(BaseModel):
     birth_place: str  # Example: Seoul, South Korea
 
 def get_planet_from_sequence(start_planet: str, offset: int) -> str:
+    """
+    offset is zero-based from the first daytime segment.
+    Segment 1 -> offset 0
+    Segment 12 -> offset 11
+    Segment 13 -> offset 12
+    Segment 24 -> offset 23
+    """
     start_index = PLANET_ORDER.index(start_planet)
     return PLANET_ORDER[(start_index + offset) % len(PLANET_ORDER)]
 
@@ -55,7 +64,8 @@ def get_planet_from_sequence(start_planet: str, offset: int) -> str:
 def health_check():
     return {
         "status": "ok",
-        "message": "Energy Color API is running."
+        "message": "Energy Color API is running.",
+        "version": "1.1.0"
     }
 
 @app.post("/calculate-past-energy-color")
@@ -102,14 +112,15 @@ def calculate_past_energy_color(req: BirthRequest):
         sunrise = today_sun["sunrise"]
         sunset = today_sun["sunset"]
 
-        # Day period: sunrise to sunset
+        # Day period: today's sunrise to today's sunset.
         if sunrise <= birth_dt < sunset:
             period_start = sunrise
             period_end = sunset
             period_type = "day"
             weekday_for_start = birth_date.weekday()
+            segment_offset_base = 0       # segments 1~12
 
-        # Night period after sunset: today's sunset to tomorrow's sunrise
+        # Night period after today's sunset: today's sunset to tomorrow's sunrise.
         elif birth_dt >= sunset:
             next_day = birth_date + timedelta(days=1)
             next_sun = sun(city.observer, date=next_day, tzinfo=tz)
@@ -117,8 +128,9 @@ def calculate_past_energy_color(req: BirthRequest):
             period_end = next_sun["sunrise"]
             period_type = "night"
             weekday_for_start = birth_date.weekday()
+            segment_offset_base = 12      # segments 13~24
 
-        # Night period before sunrise: yesterday's sunset to today's sunrise
+        # Night period before today's sunrise: yesterday's sunset to today's sunrise.
         else:
             prev_day = birth_date - timedelta(days=1)
             prev_sun = sun(city.observer, date=prev_day, tzinfo=tz)
@@ -126,6 +138,7 @@ def calculate_past_energy_color(req: BirthRequest):
             period_end = sunrise
             period_type = "night"
             weekday_for_start = prev_day.weekday()
+            segment_offset_base = 12      # previous day's segments 13~24
 
         period_seconds = (period_end - period_start).total_seconds()
         segment_seconds = period_seconds / 12
@@ -134,11 +147,18 @@ def calculate_past_energy_color(req: BirthRequest):
         segment_in_period = int(elapsed_seconds // segment_seconds)
         segment_in_period = max(0, min(segment_in_period, 11))
 
-        # 1~12 for day, 13~24 for night
+        # User-facing segment index for debugging only:
+        # day: 1~12, night: 13~24
         segment_index = segment_in_period + 1 if period_type == "day" else segment_in_period + 13
 
         start_planet = WEEKDAY_START[weekday_for_start]
-        planet = get_planet_from_sequence(start_planet, segment_in_period)
+
+        # CRITICAL FIX:
+        # Night segments must continue after the 12 daytime segments.
+        # Old version incorrectly restarted the sequence at night.
+        total_offset = segment_offset_base + segment_in_period
+
+        planet = get_planet_from_sequence(start_planet, total_offset)
         color, emoji = PLANET_TO_COLOR[planet]
 
         return {
@@ -149,9 +169,17 @@ def calculate_past_energy_color(req: BirthRequest):
             "internal": {
                 "period_type": period_type,
                 "segment_index": segment_index,
+                "segment_in_period": segment_in_period + 1,
+                "total_offset": total_offset,
                 "timezone": timezone_name,
                 "latitude": lat,
-                "longitude": lon
+                "longitude": lon,
+                "sunrise": sunrise.isoformat(),
+                "sunset": sunset.isoformat(),
+                "period_start": period_start.isoformat(),
+                "period_end": period_end.isoformat(),
+                "weekday_for_start_python": weekday_for_start,
+                "start_planet": start_planet
             },
             "internal_note": "Only color and emoji should be shown to the user. Do not reveal planet or calculation details."
         }
